@@ -1,104 +1,58 @@
-# Load required libraries
+# Load libraries
 library(readxl)
+library(dplyr)
 library(ggplot2)
+library(janitor)
 library(DataExplorer)
-library(corrplot)
-library(lubridate)
+library(stringr)
 
-# Load data from Excel file
-df <- read_excel("insurance_fraud_data.xlsx")  # <-- replace with your file name
+# Load the data
+df <- read_excel("insurance_claims.xlsx")
 
-# Check structure and summary
-str(df)
+# Clean column names for easier handling
+df <- clean_names(df)
+
+# Quick overview
+glimpse(df)
 summary(df)
 
-# Convert date columns
-df$policy_bind_date <- dmy(df$policy_bind_date)
-df$incident_date <- dmy(df$incident_date)
+# Check missing values
+plot_missing(df)
 
-# Convert relevant columns to factors
-factor_cols <- c("insured_sex", "insured_education_level", "insured_occupation",
-                 "insured_hobbies", "insured_relationship", "incident_type",
-                 "collision_type", "incident_severity", "authorities_contacted",
-                 "incident_state", "incident_city", "property_damage",
-                 "police_report_available", "auto_make", "auto_model",
-                 "fraud_reported")
+# Separate numerical and categorical columns
+numeric_cols <- df %>% select(where(is.numeric)) %>% colnames()
+non_numeric_cols <- df[, !sapply(df, is.numeric)] %>% colnames()
+# Print column types
+cat("Numerical columns:\n")
+print(numeric_cols)
 
-df[factor_cols] <- lapply(df[factor_cols], as.factor)
+cat("\nNon-numerical columns:\n")
+print(non_numeric_cols)
 
-# ---------------------------------------
-# 🔍 Univariate Analysis
-# ---------------------------------------
+# Check one-hot encoded fields (e.g., in_ured_, colli_ion_type, etc.)
+one_hot_groups <- unique(str_extract(colnames(df), "^(policy_state|in_ured|incident_type|incident_city|incident_severity|authorities_contacted|collision_type|auto_make|number_of_vehicle|in_ured_occupation|in_ured_relation_hip|in_ured_education_level|in_ured_hobbie_)"))
+one_hot_groups <- one_hot_groups[!is.na(one_hot_groups)]
 
-# Fraud Count
-ggplot(df, aes(fraud_reported)) +
-  geom_bar(fill = "darkred") +
-  labs(title = "Fraud vs Non-Fraud Count", x = "Fraud Reported", y = "Count")
+cat("\nDetected one-hot encoded feature groups:\n")
+print(one_hot_groups)
 
-# Age Distribution
-ggplot(df, aes(age)) +
-  geom_histogram(fill = "skyblue", bins = 20) +
-  labs(title = "Age Distribution", x = "Age", y = "Frequency")
+# EDA for numeric columns
+plot_histogram(df[, numeric_cols])
+plot_density(df[, numeric_cols])
+plot_correlation(df[, numeric_cols], type = "c")
 
-# Policy Annual Premium
-ggplot(df, aes(policy_annual_premium)) +
-  geom_histogram(fill = "orange", bins = 30) +
-  labs(title = "Annual Premium Distribution", x = "Annual Premium", y = "Count")
+# EDA for target variable
+if ("fraud_reported" %in% colnames(df)) {
+  df$fraud_reported <- as.factor(df$fraud_reported)
+  cat("\nTarget variable class distribution:\n")
+  print(table(df$fraud_reported))
+  
+  ggplot(df, aes(fraud_reported)) +
+    geom_bar(fill = "#4e79a7") +
+    theme_minimal() +
+    labs(title = "Class Distribution of Fraud Reported", x = "Fraud Reported", y = "Count")
+}
 
-# Total Claim Amount
-ggplot(df, aes(total_claim_amount)) +
-  geom_histogram(fill = "lightgreen", bins = 30) +
-  labs(title = "Total Claim Amount Distribution", x = "Total Claim", y = "Count")
-
-# ---------------------------------------
-# 🔍 Bivariate Analysis
-# ---------------------------------------
-
-# Fraud vs. Gender
-ggplot(df, aes(insured_sex, fill = fraud_reported)) +
-  geom_bar(position = "dodge") +
-  labs(title = "Fraud by Gender", x = "Gender", y = "Count")
-
-# Fraud by Occupation
-ggplot(df, aes(insured_occupation, fill = fraud_reported)) +
-  geom_bar(position = "dodge") +
-  coord_flip() +
-  labs(title = "Fraud by Occupation", x = "Occupation", y = "Count")
-
-# Fraud by Incident Type
-ggplot(df, aes(incident_type, fill = fraud_reported)) +
-  geom_bar(position = "dodge") +
-  labs(title = "Fraud by Incident Type", x = "Incident Type", y = "Count")
-
-# Boxplot: Total Claim by Fraud
-ggplot(df, aes(fraud_reported, total_claim_amount, fill = fraud_reported)) +
-  geom_boxplot() +
-  labs(title = "Total Claim by Fraud Status", x = "Fraud Reported", y = "Total Claim")
-
-# Scatter plot: Age vs Total Claim colored by Fraud
-ggplot(df, aes(age, total_claim_amount, color = fraud_reported)) +
-  geom_point(alpha = 0.6) +
-  labs(title = "Age vs Total Claim by Fraud", x = "Age", y = "Total Claim Amount")
-
-# ---------------------------------------
-# 🔍 Correlation Matrix (Numeric Columns)
-# ---------------------------------------
-
-# Select numeric columns only
-numeric_cols <- df[sapply(df, is.numeric)]
-
-# Remove columns with all NA values
-numeric_cols <- numeric_cols[, colSums(is.na(numeric_cols)) < nrow(numeric_cols)]
-
-# Remove rows with NA for correlation
-numeric_clean <- na.omit(numeric_cols)
-
-# Plot correlation heatmap
-cor_matrix <- cor(numeric_clean)
-corrplot(cor_matrix, method = "color", type = "lower", tl.cex = 0.8)
-
-# ---------------------------------------
-# 🔍 Auto EDA Report (Optional)
-# ---------------------------------------
-create_report(df)
+# Optional: Profile the data
+# CreateReport(df)
 
