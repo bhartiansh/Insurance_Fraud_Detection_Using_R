@@ -1,49 +1,41 @@
-# 📦 Load required packages
+# Load required libraries
 library(readxl)
 library(dplyr)
 library(caret)
-library(ggplot2)
-library(pROC)
 
-# 📂 Read the Excel file
-data <- read_excel("insurance_fraud_data.xlsx")
+# Step 1: Load cleaned dataset
+df <- readxl::read_excel("cleaned_insurance_claims.xlsx")
 
-# 🧹 Data Preprocessing
-data <- data %>%
-  mutate(fraud_reported = as.factor(fraud_reported),
-         policy_bind_date = as.Date(policy_bind_date),
-         incident_date = as.Date(incident_date)) %>%
-  select(-policy_number, -insured_zip, -incident_location)  # drop irrelevant columns
+# Step 2: Ensure target variable is a factor (binary)
+df$fraud_reported <- as.factor(df$fraud_reported)
 
-# Replace "-" in column names for R compatibility
-colnames(data) <- make.names(colnames(data))
+# Step 3: Remove problematic column (if exists)
+if ("capital.gains" %in% colnames(df)) {
+  df <- df %>% select(-capital.gains)
+}
 
-# Convert character columns to factors
-data[sapply(data, is.character)] <- lapply(data[sapply(data, is.character)], as.factor)
-
-# 🚂 Split the data into training and testing sets
+# Step 4: Train-test split (80-20)
 set.seed(123)
-split <- createDataPartition(data$fraud_reported, p = 0.7, list = FALSE)
-train <- data[split, ]
-test <- data[-split, ]
+split <- createDataPartition(df$fraud_reported, p = 0.9, list = FALSE)
+train <- df[split, ]
+test <- df[-split, ]
 
-# 🤖 Train the Logistic Regression model
+# Step 5: Ensure test and train have same columns
+common_cols <- intersect(names(train), names(test))
+train <- train[, common_cols]
+test <- test[, common_cols]
+
+# Step 6: Train logistic regression model
 log_model <- glm(fraud_reported ~ ., data = train, family = binomial)
 
-# 📊 Summary of the model
-summary(log_model)
+# Step 7: Predict probabilities on test set
+pred_probs <- predict(log_model, newdata = test, type = "response")
 
-# 🔮 Predict on test set
-pred_probs <- predict(log_model, test, type = "response")
-pred_classes <- ifelse(pred_probs > 0.5, "Y", "N")
-pred_classes <- as.factor(pred_classes)
+# Step 8: Convert probabilities to class (threshold = 0.5)
+pred_class <- ifelse(pred_probs >= 0.5, "1", "0")
+pred_class <- as.factor(pred_class)
 
-# 📈 Evaluation
-conf_mat <- confusionMatrix(pred_classes, test$fraud_reported)
-print(conf_mat)
-
-# ROC Curve
-roc_obj <- roc(test$fraud_reported, pred_probs, levels = c("N", "Y"))
-plot(roc_obj, col = "blue", main = "ROC Curve - Logistic Regression")
-auc(roc_obj)
+# Step 9: Evaluate with confusion matrix
+conf_matrix <- confusionMatrix(pred_class, test$fraud_reported)
+print(conf_matrix)
 
